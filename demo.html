@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Audio Drama Demo</title>
+    <style>
+        :root {
+            --bg: #f6f5f2; --card: #ffffff; --text: #22211f; --muted: #6b6862;
+            --line: #e3e0da; --accent: #7a4fd6; --accent-soft: #efe8fc; --done: #2f8f5b;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #161519; --card: #201f24; --text: #ecebef; --muted: #9b98a3;
+                --line: #34323a; --accent: #a888f0; --accent-soft: #2c2640; --done: #5cc48b;
+            }
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "PingFang SC", sans-serif; }
+        main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+        h1 { font-size: 22px; margin: 0 0 4px; }
+        .sub { color: var(--muted); margin: 0 0 20px; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+        .stat b { display: block; font-size: 22px; }
+        .stat span { color: var(--muted); font-size: 13px; }
+        form { display: grid; grid-template-columns: 2fr 1fr 80px auto; gap: 8px; margin-bottom: 16px; }
+        input, select, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); min-width: 0; }
+        button { background: var(--accent); color: #fff; border: none; cursor: pointer; }
+        .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .filters button { background: var(--card); color: var(--muted); border: 1px solid var(--line); padding: 4px 12px; }
+        .filters button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+        ul { list-style: none; padding: 0; margin: 0; }
+        li { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 8px; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; }
+        .title { font-weight: 600; }
+        .tag { font-size: 12px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; margin-left: 6px; font-weight: 400; }
+        .bar { grid-column: 1 / -1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+        .bar i { display: block; height: 100%; background: var(--accent); }
+        .done .bar i { background: var(--done); }
+        .ctrl { display: flex; gap: 4px; align-items: center; color: var(--muted); font-size: 13px; }
+        .ctrl button { padding: 2px 9px; background: var(--card); color: var(--text); border: 1px solid var(--line); }
+        .empty { color: var(--muted); text-align: center; padding: 24px; }
+        @media (max-width: 560px) { form { grid-template-columns: 1fr 1fr; } form input:first-child { grid-column: 1 / -1; } }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Audio Drama Manage System</h1>
+    <p class="sub">Demo：添加广播剧、记录收听进度。数据只存在你自己的浏览器里。 · <a href="index.html">首页</a></p>
+
+    <div class="stats">
+        <div class="stat"><b id="sTotal">0</b><span>部剧</span></div>
+        <div class="stat"><b id="sDone">0</b><span>已听完</span></div>
+        <div class="stat"><b id="sEp">0</b><span>已听集数</span></div>
+    </div>
+
+    <form id="add">
+        <input id="fTitle" placeholder="剧名" required>
+        <select id="fCat">
+            <option>古风</option><option>现代</option><option>悬疑</option><option>科幻</option><option>其他</option>
+        </select>
+        <input id="fEp" type="number" min="1" value="12" title="总集数">
+        <button>添加</button>
+    </form>
+
+    <div class="filters" id="filters"></div>
+    <ul id="list"></ul>
+</main>
+
+<script>
+    const KEY = 'adms-demo';
+    const CATS = ['全部', '古风', '现代', '悬疑', '科幻', '其他'];
+    const seed = [
+        { id: 1, title: '示例：长夜将明', cat: '古风', total: 20, heard: 20 },
+        { id: 2, title: '示例：第七频道', cat: '悬疑', total: 12, heard: 5 },
+        { id: 3, title: '示例：星港来信', cat: '科幻', total: 8, heard: 0 }
+    ];
+    let items, filter = '全部';
+    try { items = JSON.parse(localStorage.getItem(KEY)) || seed; } catch (e) { items = seed; }
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {} };
+    const $ = id => document.getElementById(id);
+    const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function render() {
+        $('filters').innerHTML = CATS.map(c => `<button class="${c === filter ? 'on' : ''}" data-cat="${c}">${c}</button>`).join('');
+        const shown = items.filter(d => filter === '全部' || d.cat === filter);
+        $('list').innerHTML = shown.length ? shown.map(d => `
+            <li class="${d.heard >= d.total ? 'done' : ''}">
+                <div class="title">${esc(d.title)}<span class="tag">${d.cat}</span></div>
+                <div class="ctrl">
+                    <button data-act="-" data-id="${d.id}">−</button>
+                    ${d.heard} / ${d.total}
+                    <button data-act="+" data-id="${d.id}">+</button>
+                    <button data-act="x" data-id="${d.id}" title="删除">×</button>
+                </div>
+                <div class="bar"><i style="width:${Math.round(d.heard / d.total * 100)}%"></i></div>
+            </li>`).join('') : '<li class="empty">这个分类还没有剧</li>';
+        $('sTotal').textContent = items.length;
+        $('sDone').textContent = items.filter(d => d.heard >= d.total).length;
+        $('sEp').textContent = items.reduce((n, d) => n + d.heard, 0);
+    }
+
+    $('add').addEventListener('submit', e => {
+        e.preventDefault();
+        const title = $('fTitle').value.trim();
+        if (!title) return;
+        items.unshift({ id: Date.now(), title, cat: $('fCat').value, total: Math.max(1, +$('fEp').value || 1), heard: 0 });
+        $('fTitle').value = '';
+        save(); render();
+    });
+    $('filters').addEventListener('click', e => {
+        if (e.target.dataset.cat) { filter = e.target.dataset.cat; render(); }
+    });
+    $('list').addEventListener('click', e => {
+        const { act, id } = e.target.dataset;
+        const d = items.find(x => x.id === +id);
+        if (!d) return;
+        if (act === '+') d.heard = Math.min(d.total, d.heard + 1);
+        if (act === '-') d.heard = Math.max(0, d.heard - 1);
+        if (act === 'x') items = items.filter(x => x !== d);
+        save(); render();
+    });
+    render();
+</script>
+</body>
+</html>
